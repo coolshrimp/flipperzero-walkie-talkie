@@ -3,11 +3,15 @@ sourcecode:
   location:
     origin: https://github.com/coolshrimp/flipperzero-walkie-talkie.git
     commit_sha: 018f867fa138325bd24d267c4e0df42e472635b9
-short_description: Scan and listen to FRS walkie-talkie channels through the speaker
+short_description: Receive-only FRS channel activity and RSSI scanner
 description: |
-  Listen in on FRS walkie-talkie channels with your Flipper Zero. Tunes the
-  built-in CC1101 radio to the 22 standard FRS channels (462/467 MHz) and plays
-  whatever it hears through the speaker.
+  Monitor FRS walkie-talkie channels with your Flipper Zero. Tunes the
+  built-in CC1101 radio to the 22 standard FRS channels (462/467 MHz) with
+  auto-squelch, live RSSI, and a channel scanner.
+
+  **Audio limitation:** the CC1101 data mirror is a digital receive-data
+  stream, not demodulated analog voice — treat this as a channel
+  activity/RSSI scanner; speaker output is not reliable FRS voice.
 
   **Features:**
 

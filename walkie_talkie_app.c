@@ -19,6 +19,8 @@
 
 // Ticks (at ~10ms each) to hold on an active channel before auto-resuming scan
 #define SCAN_HOLD_TICKS       50
+#define SCAN_SETTLE_MS         75
+#define SCAN_CONFIRM_SAMPLES    2
 #define SQUELCH_LEVEL_DEFAULT -68.0f
 
 
@@ -64,6 +66,8 @@ typedef struct {
     bool scan_paused;
     float squelch_level;
     uint32_t scan_hold_ticks; // countdown ticks before auto-resuming scan
+    uint32_t frequency_set_tick;
+    uint8_t signal_samples;
 } WalkieTalkieApp;
 
 WalkieTalkieApp* walkie_talkie_app_alloc();
@@ -255,6 +259,8 @@ static void walkie_talkie_set_frequency(WalkieTalkieApp* app, uint32_t frequency
     subghz_devices_set_frequency(app->radio_device, app->frequency);
 
     subghz_devices_start_async_rx(app->radio_device, walkie_talkie_rx_callback, app);
+    app->frequency_set_tick = furi_get_tick();
+    app->signal_samples = 0;
 }
 
 static void walkie_talkie_update_rssi(WalkieTalkieApp* app) {
@@ -299,6 +305,7 @@ static bool walkie_talkie_init_subghz(WalkieTalkieApp* app) {
 }
 
 static void walkie_talkie_process_scanning(WalkieTalkieApp* app) {
+    if((furi_get_tick() - app->frequency_set_tick) < SCAN_SETTLE_MS) return;
     walkie_talkie_update_rssi(app);
 
     bool signal_detected = (app->rssi > app->squelch_level);
@@ -319,12 +326,14 @@ static void walkie_talkie_process_scanning(WalkieTalkieApp* app) {
     }
 
     if(signal_detected) {
+        if(++app->signal_samples < SCAN_CONFIRM_SAMPLES) return;
         app->scan_paused = true;
         app->scan_hold_ticks = SCAN_HOLD_TICKS;
         walkie_talkie_apply_audio(app); // unmute so user hears the signal
         FURI_LOG_D(TAG, "Scan paused on CH %lu", app->current_channel + 1);
         return;
     }
+    app->signal_samples = 0;
 
     // Advance to next channel in the selected direction
     if(app->scan_direction == ScanDirectionUp) {
@@ -353,6 +362,8 @@ WalkieTalkieApp* walkie_talkie_app_alloc() {
     app->scan_direction = ScanDirectionUp;
     app->scan_paused = false;
     app->scan_hold_ticks = 0;
+    app->frequency_set_tick = 0;
+    app->signal_samples = 0;
     app->speaker_acquired = false;
     app->auto_squelch = true;
     app->squelch_level = SQUELCH_LEVEL_DEFAULT;

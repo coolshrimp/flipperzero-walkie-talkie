@@ -1,5 +1,9 @@
 # Walkie Talkie — FRS Channel Scanner for Flipper Zero
 
+> **Audio limitation:** The CC1101 data mirror is a digital receive-data stream, not
+> demodulated analog voice. Treat this app as a channel activity/RSSI scanner unless
+> external demodulation hardware is added; speaker output is not reliable FRS voice.
+
 📻 Listen in on FRS walkie-talkie channels with your Flipper Zero. Tunes the built-in CC1101 radio to the 22 standard FRS channels and plays whatever it hears through the speaker, with auto-squelch and a channel scanner.
 
 > **Receive-only.** This app does not transmit, and it does not decode CTCSS/DCS — subchannel numbers are labels for matching your handheld radio's display, not a privacy-code filter.
