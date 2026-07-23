@@ -12,7 +12,10 @@
 
 ## ✨ Features
 
-- All 22 standard FRS channels (462/467 MHz) with a scrollable channel list
+- All 22 standard FRS channels (462/467 MHz) with a scrollable channel list.
+  The seven 467 MHz interstitial channels (8–14) sit outside the CC1101's
+  supported bands: on official firmware they are skipped and shown as "N/A",
+  while extended-range firmwares (e.g. Unleashed, Momentum) can tune them
 - Channel scanner: scans up or down, pauses automatically when a signal is detected, and resumes after the transmission ends
 - Auto-squelch with adjustable sensitivity (or turn it off to hear raw static)
 - Live RSSI readout with a 5-bar signal-strength meter

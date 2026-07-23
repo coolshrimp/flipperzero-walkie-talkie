@@ -15,7 +15,9 @@ description: |
 
   **Features:**
 
-  - All 22 standard FRS channels with a scrollable channel list
+  - All 22 standard FRS channels with a scrollable channel list (the seven
+    467 MHz channels 8-14 are outside the CC1101's bands: skipped and marked
+    N/A on official firmware; tunable on extended-range firmwares)
   - Channel scanner: scans up or down, pauses automatically when a signal is
     detected, and resumes after the transmission ends
   - Auto-squelch with adjustable sensitivity
