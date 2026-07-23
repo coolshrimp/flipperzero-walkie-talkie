@@ -61,6 +61,7 @@ typedef struct {
     uint32_t menu_index;
     uint32_t settings_cursor;
     const SubGhzDevice* radio_device;
+    bool channel_valid[FRS_NUM_CHANNELS];
     bool speaker_acquired;
     bool auto_squelch;
     bool scan_paused;
@@ -209,11 +210,12 @@ static void walkie_talkie_draw_callback(Canvas* canvas, void* context) {
             snprintf(
                 line,
                 sizeof(line),
-                "%s CH%02lu  %lu.%03lu",
+                "%s CH%02lu  %lu.%03lu%s",
                 is_current ? "*" : " ",
                 (unsigned long)(idx + 1),
                 (unsigned long)mhz,
-                (unsigned long)khz);
+                (unsigned long)khz,
+                app->channel_valid[idx] ? "" : " N/A");
             canvas_draw_str_aligned(canvas, 2, row_y, AlignLeft, AlignTop, line);
 
             if(is_selected) {
@@ -249,8 +251,30 @@ static void walkie_talkie_apply_audio(WalkieTalkieApp* app) {
     subghz_devices_set_async_mirror_pin(app->radio_device, muted ? NULL : &gpio_speaker);
 }
 
+// Step to the next hardware-supported channel in the given direction.
+// Returns `from` unchanged if no other channel is valid.
+static uint32_t
+    walkie_talkie_next_valid_channel(const WalkieTalkieApp* app, uint32_t from, bool up) {
+    uint32_t ch = from;
+    for(uint32_t i = 0; i < FRS_NUM_CHANNELS; i++) {
+        if(up) {
+            ch = (ch + 1) % FRS_NUM_CHANNELS;
+        } else {
+            ch = (ch > 0) ? ch - 1 : FRS_NUM_CHANNELS - 1;
+        }
+        if(app->channel_valid[ch]) return ch;
+    }
+    return from;
+}
+
 static void walkie_talkie_set_frequency(WalkieTalkieApp* app, uint32_t frequency) {
     if(!app->radio_device) return;
+
+    // Backstop: tuning an unsupported frequency would furi_check-crash in the HAL
+    if(!subghz_devices_is_frequency_valid(app->radio_device, frequency)) {
+        FURI_LOG_E(TAG, "Rejected unsupported frequency %lu", (unsigned long)frequency);
+        return;
+    }
 
     subghz_devices_stop_async_rx(app->radio_device);
     subghz_devices_idle(app->radio_device);
@@ -283,6 +307,13 @@ static bool walkie_talkie_init_subghz(WalkieTalkieApp* app) {
     app->radio_device = device;
 
     subghz_devices_begin(device);
+
+    // Probe which FRS channels this firmware/hardware can actually tune.
+    // Official firmware rejects the 467 MHz interstitials (outside CC1101 bands);
+    // extended-range firmwares accept them.
+    for(uint32_t i = 0; i < FRS_NUM_CHANNELS; i++) {
+        app->channel_valid[i] = subghz_devices_is_frequency_valid(device, frs_frequencies[i]);
+    }
 
     if(!subghz_devices_is_frequency_valid(device, app->frequency)) {
         FURI_LOG_E(TAG, "Invalid frequency: %lu", app->frequency);
@@ -335,13 +366,9 @@ static void walkie_talkie_process_scanning(WalkieTalkieApp* app) {
     }
     app->signal_samples = 0;
 
-    // Advance to next channel in the selected direction
-    if(app->scan_direction == ScanDirectionUp) {
-        app->current_channel = (app->current_channel + 1) % FRS_NUM_CHANNELS;
-    } else {
-        app->current_channel =
-            (app->current_channel > 0) ? app->current_channel - 1 : FRS_NUM_CHANNELS - 1;
-    }
+    // Advance to next supported channel in the selected direction
+    app->current_channel = walkie_talkie_next_valid_channel(
+        app, app->current_channel, app->scan_direction == ScanDirectionUp);
     walkie_talkie_set_frequency(app, frs_frequencies[app->current_channel]);
 }
 
@@ -372,6 +399,9 @@ WalkieTalkieApp* walkie_talkie_app_alloc() {
     app->menu_index = 0;
     app->settings_cursor = 0;
     app->radio_device = NULL;
+    for(uint32_t i = 0; i < FRS_NUM_CHANNELS; i++) {
+        app->channel_valid[i] = false;
+    }
 
     view_port_draw_callback_set(app->view_port, walkie_talkie_draw_callback, app);
     view_port_input_callback_set(app->view_port, walkie_talkie_input_callback, app->event_queue);
@@ -434,12 +464,15 @@ int32_t walkie_talkie_app(void* p) {
                         else if(app->menu_index == 2) app->page = WalkieTalkiePageFrsList;
                         else if(app->menu_index == 3) app->page = WalkieTalkiePageAbout;
                     } else if(app->page == WalkieTalkiePageFrsList) {
-                        // Tune to the highlighted channel
-                        app->current_channel = app->frs_list_index;
-                        app->scanning = false;
-                        app->scan_paused = false;
-                        walkie_talkie_set_frequency(app, frs_frequencies[app->current_channel]);
-                        app->page = WalkieTalkiePageListenNow;
+                        // Tune to the highlighted channel; N/A channels are not selectable
+                        if(app->channel_valid[app->frs_list_index]) {
+                            app->current_channel = app->frs_list_index;
+                            app->scanning = false;
+                            app->scan_paused = false;
+                            walkie_talkie_set_frequency(
+                                app, frs_frequencies[app->current_channel]);
+                            app->page = WalkieTalkiePageListenNow;
+                        }
                     } else if(
                         app->page == WalkieTalkiePageSettings &&
                         app->settings_cursor == 1 &&
@@ -458,10 +491,9 @@ int32_t walkie_talkie_app(void* p) {
                     } else if(app->page == WalkieTalkiePageFrsList) {
                         if(app->frs_list_index > 0) app->frs_list_index--;
                     } else {
-                        // Channel up
+                        // Channel up (skips channels this firmware can't tune)
                         app->current_channel =
-                            (app->current_channel < FRS_NUM_CHANNELS - 1) ?
-                                app->current_channel + 1 : 0;
+                            walkie_talkie_next_valid_channel(app, app->current_channel, true);
                         app->scanning = false;
                         app->scan_paused = false;
                         walkie_talkie_set_frequency(app, frs_frequencies[app->current_channel]);
@@ -474,10 +506,9 @@ int32_t walkie_talkie_app(void* p) {
                     } else if(app->page == WalkieTalkiePageFrsList) {
                         if(app->frs_list_index < FRS_NUM_CHANNELS - 1) app->frs_list_index++;
                     } else {
-                        // Channel down
+                        // Channel down (skips channels this firmware can't tune)
                         app->current_channel =
-                            (app->current_channel > 0) ?
-                                app->current_channel - 1 : FRS_NUM_CHANNELS - 1;
+                            walkie_talkie_next_valid_channel(app, app->current_channel, false);
                         app->scanning = false;
                         app->scan_paused = false;
                         walkie_talkie_set_frequency(app, frs_frequencies[app->current_channel]);

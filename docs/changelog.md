@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2
+
+- Fix guaranteed crash-and-reboot on official firmware when tuning to channels
+  8–14: the 467 MHz FRS interstitials are outside the CC1101's supported bands,
+  and tuning them tripped a `furi_check` in the SubGHz HAL
+- Channel validity is now probed per-firmware at startup: unsupported channels
+  are skipped by channel up/down and the scanner, and shown as "N/A" in the FRS
+  list (extended-range firmwares such as Unleashed/Momentum keep all 22)
+
 ## 1.1
 
 - Scanner reliability: wait 75 ms after each retune and require 2 consecutive
